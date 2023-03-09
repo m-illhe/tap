@@ -133,7 +133,7 @@ double weight[]={
 // endroit dans Q en fonction de la mise à jour de son score.
 
 node createNode(position x, double cost, double score, node parent){
-  node noeud = malloc(sizeof(noeud));
+  node noeud = malloc(sizeof(*noeud));
   noeud->pos = x;
   noeud->cost = cost;
   noeud->score = score;
@@ -183,7 +183,7 @@ double A_star(grid G, heuristic h){
   while(!heap_empty(Q)){
     //Choisir u ∈ Q tel que score[u] est minimum et le supprimer de Q
     node u = heap_pop(Q);
-    if (u == NULL) printf("Error\n");
+    if (u == NULL) { printf("Error\n"); exit(EXIT_FAILURE); }
 
     if (u->pos.x == G.end.x && u->pos.y == G.end.y){
         //renvoyer le chemin de s à t grâce à la relation parent[u] : t → parent[t] → parent[parent[t]] → · · · → s
@@ -196,13 +196,13 @@ double A_star(grid G, heuristic h){
       return cost;
     }
 
-
+    if (G.mark[u->pos.x][u->pos.y] == MK_USED) continue;
     G.mark[u->pos.x][u->pos.y] = MK_USED;
 
 
-    for (int i = u->pos.x - 1; i <= u->pos.x + 1; i ++){
+    for (int i = u->pos.x - 1; i <= u->pos.x + 1; i++){
       for (int j = u->pos.y - 1; j <= u->pos.y + 1; j++){
-        if (G.mark[i][j] == MK_USED){ //|| G.texture[i][j] == TX_WALL){
+        if (G.mark[i][j] == MK_USED || G.texture[i][j] == TX_WALL) {
           continue;
         }
         double c = u->cost + weight[G.texture[i][j]];
@@ -210,7 +210,7 @@ double A_star(grid G, heuristic h){
         v_pos.x = i;
         v_pos.y = j;
         node v = createNode(v_pos, c, c + h(v_pos, G.end, &G),u);
-        if(heap_add(Q, v)) printf("Error2\n");
+        if(heap_add(Q, v)) { printf("Error2\n"); exit(EXIT_FAILURE); }
         G.mark[v->pos.x][v->pos.y] = MK_FRONT;
       }
     }
@@ -333,10 +333,10 @@ int main(int argc, char *argv[]){
 
   // testez différentes grilles ...
 
-  grid G = initGridPoints(80,60,TX_FREE,1); // petite grille vide, sans mur
+  //grid G = initGridPoints(80,60,TX_FREE,1); // petite grille vide, sans mur
   //grid G = initGridPoints(width,height,TX_FREE,1); // grande grille vide, sans mur
   //grid G = initGridPoints(32,24,TX_WALL,0.2); // petite grille avec quelques murs
-  //grid G = initGridLaby(12,9,8); // petit labyrinthe aléatoire
+  grid G = initGridLaby(12,9,8); // petit labyrinthe aléatoire
   //grid G = initGridLaby(width/8,height/8,3); // grand labyrinthe aléatoire
   //grid G = initGridFile("mygrid.txt"); // grille à partir d'un fichier modifiable
 
