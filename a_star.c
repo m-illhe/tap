@@ -10,6 +10,7 @@
 // paramètre. Vous pouvez définir votre propre heuristique.
 typedef double (*heuristic)(position,position,grid*);
 
+
 // Heuristique "nulle" pour Dijkstra.
 double h0(position s, position t, grid *G){
   return 0.0;
@@ -37,7 +38,6 @@ typedef struct node {
   struct node* parent; // parent[u] = pointeur vers le père, NULL pour start
 } *node;
 
-
 // Les arêtes, connectant les 8 cases voisines de la grille, sont
 // valuées seulement par certaines valeurs correspondant aux
 // différentes textures possibles des cases (il y en a 7). Le poids de
@@ -56,6 +56,7 @@ typedef struct node {
 // TX_WALL, alors c'est que le sommet à cette position n'existe pas
 // dans le graphe ! Et donc aucune arête ne peut donc être incidente à
 // (x,y).
+
 double weight[]={
     1.0,  // TX_FREE
   -99.9,  // TX_WALL
@@ -131,60 +132,91 @@ double weight[]={
 // pourrez pas déplacer le noeud correspondant pour le mettre au bon
 // endroit dans Q en fonction de la mise à jour de son score.
 
-int fcmp_node(const void *x, const void *y) {
-  const node nodeX = (node) x;
-  const node nodeY = (node) y;
-  if (nodeX->score < nodeY->score) return -1;
-  else return nodeX->score > nodeY->score; // ou encore return (a>b) - (a<b);
+node createNode(position x, double cost, double score, node parent){
+  node noeud = malloc(sizeof(noeud));
+  noeud->pos = x;
+  noeud->cost = cost;
+  noeud->score = score;
+  noeud->parent = parent;
+  return noeud;
 }
 
-node node_create(int posX, int posY, double cost, double score, node parent) {
-    node new_node = malloc(sizeof(*new_node));
-    new_node->pos.x = posX;
-    new_node->pos.y = posY;
-    new_node->cost = cost;
-    new_node->score = score;
-    new_node->parent = parent;
-    return new_node;
+void destroyNode(node n){
+  free(n);
 }
 
-double A_star(grid G, heuristic h) {
+int fcpm_Node(const void *node1, const void *node2){
+const node nodeA = (node)node1;
+  const node nodeB = (node)node2;
+  double a = nodeA->score;
+  double b = nodeB->score;
+  double res = a - b;
 
-    heap Q = heap_create(G.X * G.Y * 8, fcmp_node);
-    node start = node_create(G.start.x, G.start.y, 0, h(G.start, G.end, &G), NULL);
-    heap_add(Q, start);
+  if (res < 0){
+    return -1;
+  }
+  else if (res == 0){
+    double costA = nodeA->cost;
+    double costB = nodeB->cost;
+    double resCost = costA - costB;
+    if (resCost < 0){
+      return -1;
+    }
+    else if (resCost == 0){
+      return 0;
+    }
+    else{
+      return 1;
+    }
+  } else {
+    return 1;
+  }
+}
 
-    while (!heap_empty(Q)) {
-        node u = heap_pop(Q);
-        if (u == NULL) { printf("u = NULL\n"); exit(EXIT_FAILURE); }
+double A_star(grid G, heuristic h){
 
-        if (u->pos.x == G.end.x && u->pos.y == G.end.y) {
-            int score = u->cost;
-            while (u->parent != NULL) {
-                G.mark[u->pos.x][u->pos.y] = MK_PATH;
-                u = u->parent;
-                drawGrid(G);
-            }
-            return score;
-        }
+  heap Q = heap_create(G.X * G.Y * 8, fcpm_Node);
+  position p = {G.start.x, G.start.y};
+  node first = createNode(p, 0, h(G.start, G.end, &G), NULL);
+  heap_add(Q, first);
 
-        if (G.mark[u->pos.x][u->pos.y] == MK_USED) continue; 
-        G.mark[u->pos.x][u->pos.y] = MK_USED;
-        drawGrid(G);
+  while(!heap_empty(Q)){
+    //Choisir u ∈ Q tel que score[u] est minimum et le supprimer de Q
+    node u = heap_pop(Q);
+    if (u == NULL) printf("Error\n");
 
-        for (int y = u->pos.y - 1; y <= u->pos.y + 1; y++) {
-            for (int x = u->pos.x - 1; x <= u->pos.x + 1; x++) {
-                if (G.mark[x][y] != MK_USED && G.texture[x][y] != TX_WALL) {
-                    position pos = {x, y};
-                    double cost = u->cost + weight[G.texture[x][y]];
-                    node new_node = node_create(x, y, cost, cost + h(pos, G.end, &G), u);
-                    G.mark[x][y] = MK_FRONT;
-                    if (heap_add(Q, new_node)) { printf("heap_add failed\n"); exit(EXIT_FAILURE); }
-                }
-            }
-        }
+    if (u->pos.x == G.end.x && u->pos.y == G.end.y){
+        //renvoyer le chemin de s à t grâce à la relation parent[u] : t → parent[t] → parent[parent[t]] → · · · → s
+      double cost = u->cost;
+      while (u->parent != NULL){
+        G.mark[u->pos.x][u->pos.y] = MK_PATH;
+        u = u->parent;
+      }
+      drawGrid(G);
+      return cost;
     }
 
+
+    G.mark[u->pos.x][u->pos.y] = MK_USED;
+
+
+    for (int i = u->pos.x - 1; i <= u->pos.x + 1; i ++){
+      for (int j = u->pos.y - 1; j <= u->pos.y + 1; j++){
+        if (G.mark[i][j] == MK_USED){ //|| G.texture[i][j] == TX_WALL){
+          continue;
+        }
+        double c = u->cost + weight[G.texture[i][j]];
+        position v_pos;
+        v_pos.x = i;
+        v_pos.y = j;
+        node v = createNode(v_pos, c, c + h(v_pos, G.end, &G),u);
+        if(heap_add(Q, v)) printf("Error2\n");
+        G.mark[v->pos.x][v->pos.y] = MK_FRONT;
+      }
+    }
+  drawGrid(G);
+  }
+  
   // Pensez à dessiner la grille avec drawGrid(G) à chaque fois que
   // possible, pour visualiser le comportement de votre algorithme.
   // Par exemple, dès vous ajoutez un sommet à P mais aussi lorsque
@@ -301,10 +333,10 @@ int main(int argc, char *argv[]){
 
   // testez différentes grilles ...
 
-  //grid G = initGridPoints(80,60,TX_FREE,1); // petite grille vide, sans mur
+  grid G = initGridPoints(80,60,TX_FREE,1); // petite grille vide, sans mur
   //grid G = initGridPoints(width,height,TX_FREE,1); // grande grille vide, sans mur
   //grid G = initGridPoints(32,24,TX_WALL,0.2); // petite grille avec quelques murs
-  grid G = initGridLaby(12,9,8); // petit labyrinthe aléatoire
+  //grid G = initGridLaby(12,9,8); // petit labyrinthe aléatoire
   //grid G = initGridLaby(width/8,height/8,3); // grand labyrinthe aléatoire
   //grid G = initGridFile("mygrid.txt"); // grille à partir d'un fichier modifiable
 
