@@ -35,6 +35,7 @@ typedef struct node {
   position pos;        // position (.x,.y) d'un noeud u
   double cost;         // coût[u]
   double score;        // score[u] = coût[u] + h(u,end)
+  int source;
   struct node* parent; // parent[u] = pointeur vers le père, NULL pour start
 } *node;
 
@@ -132,11 +133,12 @@ double weight[]={
 // pourrez pas déplacer le noeud correspondant pour le mettre au bon
 // endroit dans Q en fonction de la mise à jour de son score.
 
-node createNode(position x, double cost, double score, node parent){
+node createNode(position x, double cost, double score, int source, node parent){
   node noeud = malloc(sizeof(*noeud));
   noeud->pos = x;
   noeud->cost = cost;
   noeud->score = score;
+  noeud->source = source;
   noeud->parent = parent;
   return noeud;
 }
@@ -173,11 +175,87 @@ const node nodeA = (node)node1;
   }
 }
 
+double A_star2(grid G, heuristic h){
+
+  heap Q = heap_create(G.X * G.Y * 8, fcpm_Node);
+  position p = {G.start.x, G.start.y};
+  position p_end = {G.end.x, G.end.y};
+  node first = createNode(p, 0, h(G.start, G.end, &G), 1, NULL);
+  node last = createNode(p_end, 0, h(G.end, G.start, &G), 0, NULL);
+  heap_add(Q, first);
+  heap_add(Q, last);
+
+
+  while(!heap_empty(Q)){
+      //Choisir u ∈ Q tel que score[u] est minimum et le supprimer de Q
+      node u = heap_pop(Q);
+      if (u == NULL) { printf("Error\n"); exit(EXIT_FAILURE); }
+
+      for (int i = u->pos.x - 1; i <= u->pos.x + 1; i++){
+        for (int j = u->pos.y - 1; j <= u->pos.y + 1; j++){
+          if ((u->source == 0 && G.mark[i][j] == MK_USED) || (u->source == 1 && G.mark[i][j] == MK_USED2) ){
+              //renvoyer le chemin de s à t grâce à la relation parent[u] : t → parent[t] → parent[parent[t]] → · · · → s
+            double cost = u->cost;
+            node save = u;
+            while (u->parent != NULL){
+              G.mark[u->pos.x][u->pos.y] = MK_PATH;
+              u = u->parent;
+            }
+            node v = heap_pop(Q);
+            while (v->pos.x != save->pos.x || v->pos.y != save->pos.y || v->source == u->source){
+              v = heap_pop(Q);
+            }
+            cost = cost + v->cost;
+            while (v->parent != NULL){
+              G.mark[v->pos.x][v->pos.y] = MK_PATH;
+              v = v->parent;
+            }
+            drawGrid(G);
+            return cost;
+          }
+        }
+      }
+
+      if(G.mark[u->pos.x][u->pos.y] == MK_USED || G.mark[u->pos.x][u->pos.y] == MK_USED2){
+        continue;
+      }
+      if (u->source == 0){
+        G.mark[u->pos.x][u->pos.y] = MK_USED2;
+      }
+      else {
+        G.mark[u->pos.x][u->pos.y] = MK_USED;
+      }
+
+
+      for (int i = u->pos.x - 1; i <= u->pos.x + 1; i++){
+        for (int j = u->pos.y - 1; j <= u->pos.y + 1; j++){
+          if (G.mark[i][j] == MK_USED || G.mark[i][j] == MK_USED2 || G.texture[i][j] == TX_WALL ) {
+            continue;
+          }
+          double c = u->cost + weight[G.texture[i][j]];
+          position v_pos;
+          v_pos.x = i;
+          v_pos.y = j;
+          node v;
+          if (u->source == 0){
+            v = createNode(v_pos, c, c + h(v_pos, G.end, &G), u->source, u);
+          }
+          else { v = createNode(v_pos, c, c + h(v_pos, G.start, &G), u->source, u);}
+          if(heap_add(Q, v)) { printf("Error2\n"); exit(EXIT_FAILURE); }
+          G.mark[v->pos.x][v->pos.y] = MK_FRONT;
+        }
+      }
+    drawGrid(G);
+  }
+  return -1;
+}
+
+
 double A_star(grid G, heuristic h){
 
   heap Q = heap_create(G.X * G.Y * 8, fcpm_Node);
   position p = {G.start.x, G.start.y};
-  node first = createNode(p, 0, h(G.start, G.end, &G), NULL);
+  node first = createNode(p, 0, h(G.start, G.end, &G), 1, NULL);
   heap_add(Q, first);
 
   while(!heap_empty(Q)){
@@ -209,13 +287,123 @@ double A_star(grid G, heuristic h){
         position v_pos;
         v_pos.x = i;
         v_pos.y = j;
-        node v = createNode(v_pos, c, c + h(v_pos, G.end, &G),u);
+        node v = createNode(v_pos, c, c + h(v_pos, G.end, &G), 1,u);
         if(heap_add(Q, v)) { printf("Error2\n"); exit(EXIT_FAILURE); }
         G.mark[v->pos.x][v->pos.y] = MK_FRONT;
       }
     }
   drawGrid(G);
   }
+  return -1;
+}
+
+  /*double A_star2(grid G, heuristic h){
+
+  heap Q = heap_create(G.X * G.Y * 8, fcpm_Node);
+  heap Q_end = heap_create(G.X * G.Y * 8, fcpm_Node);
+  position p = {G.start.x, G.start.y};
+  position p_end = {G.end.x, G.end.y};
+  node first = createNode(p, 0, h(G.start, G.end, &G), NULL);
+  node last = createNode(p_end, 0, h(G.end, G.start, &G), NULL);
+  heap_add(Q, first);
+  heap_add(Q_end, last);
+
+  while(!heap_empty(Q) || !heap_empty(Q_end)){
+    //Choisir u ∈ Q tel que score[u] est minimum et le supprimer de Q
+    node u = heap_pop(Q);
+    node u_last = heap_pop(Q_end);
+    if (u == NULL) { printf("Error\n"); exit(EXIT_FAILURE); }
+    if (u_last == NULL){printf("Error de mort\n"); exit(EXIT_FAILURE); }
+    //printf("tour de boucle \n");
+
+    if (u->pos.x == G.end.x && u->pos.y == G.end.y){
+        //renvoyer le chemin de s à t grâce à la relation parent[u] : t → parent[t] → parent[parent[t]] → · · · → s
+      double cost = u->cost;
+      while (u->parent != NULL){
+        G.mark[u->pos.x][u->pos.y] = MK_PATH;
+        u = u->parent;
+      }
+      drawGrid(G);
+      return cost;
+    }
+
+    if (G.mark[u->pos.x][u->pos.y] == MK_USED) continue;
+    G.mark[u->pos.x][u->pos.y] = MK_USED;
+
+    if (G.mark[u_last->pos.x][u_last->pos.y] == MK_USED2) continue;
+    G.mark[u_last->pos.x][u_last->pos.y] = MK_USED2;
+
+
+    for (int i = u->pos.x - 1; i <= u->pos.x + 1; i++){
+      for (int j = u->pos.y - 1; j <= u->pos.y + 1; j++){
+        if (G.mark[i][j] == MK_USED2){
+          G.mark[i][j] = MK_PATH;
+          double cost = u->cost + u_last->cost;
+          while (u->parent != NULL){
+            G.mark[u->pos.x][u->pos.y] = MK_PATH;
+            u = u->parent;
+          }
+          while(u_last->pos.x != i && u_last->pos.y != j && !heap_empty(Q_end)){
+            printf("je rentre la ?\n");
+            u_last = heap_pop(Q_end);
+          }
+          while (u_last->parent != NULL){
+            G.mark[u_last->pos.x][u_last->pos.y] = MK_PATH;
+            u_last = u_last->parent;
+          }
+        drawGrid(G);
+        return cost;
+        }
+        if (G.mark[i][j] == MK_USED || G.texture[i][j] == TX_WALL) {
+          continue;
+        }
+        double c = u->cost + weight[G.texture[i][j]];
+        position v_pos;
+        v_pos.x = i;
+        v_pos.y = j;
+        node v = createNode(v_pos, c, c + h(v_pos, G.end, &G),u);
+        if(heap_add(Q, v)) { printf("Error2\n"); exit(EXIT_FAILURE); }
+        G.mark[v->pos.x][v->pos.y] = MK_FRONT;
+      }
+    }
+
+     for (int i = u_last->pos.x - 1; i <= u_last->pos.x + 1; i++){
+      for (int j = u_last->pos.y - 1; j <= u_last->pos.y + 1; j++){
+        if (G.mark[i][j] == MK_USED){
+          G.mark[i][j] = MK_PATH;
+          double cost = u_last->cost;
+          while (u_last->parent != NULL){
+            G.mark[u_last->pos.x][u_last->pos.y] = MK_PATH;
+            u_last = u_last->parent;
+          }
+          while(u->pos.x != i && u->pos.y != j && !heap_empty(Q)){
+            printf("je rentre ici ?\n");
+            u = heap_pop(Q);
+          } 
+          while (u->parent != NULL){
+            G.mark[u->pos.x][u->pos.y] = MK_PATH;
+            u = u->parent;
+          }
+          
+        drawGrid(G);
+        return cost;
+        }
+        if (G.mark[i][j] == MK_USED2 || G.texture[i][j] == TX_WALL) {
+          continue;
+        }
+        double c = u_last->cost + weight[G.texture[i][j]];
+        position v_pos;
+        v_pos.x = i;
+        v_pos.y = j;
+        node v = createNode(v_pos, c, c + h(v_pos, G.start, &G),u_last);
+        if(heap_add(Q_end, v)) { printf("Error2\n"); exit(EXIT_FAILURE); }
+        G.mark[v->pos.x][v->pos.y] = MK_FRONT;
+      }
+    }
+  drawGrid(G);
+  }
+  return -1;
+}*/
   
   // Pensez à dessiner la grille avec drawGrid(G) à chaque fois que
   // possible, pour visualiser le comportement de votre algorithme.
@@ -243,9 +431,6 @@ double A_star(grid G, heuristic h){
   // élément, vérifiez qu'il n'est pas NULL, ce qui n'est pas censé
   // arriver. C'est autant de "segmentation fault" que vous pouvez
   // éviter.
-
-  return -1;
-}
 
 
 // Améliorations à faire seulement quand vous aurez bien avancé:
@@ -321,8 +506,7 @@ double A_star(grid G, heuristic h){
 //     u, mettre à jour .nchild de son père et remonter la branche
 //     jusqu'à trouver un node qui n'est plus une feuille. C'est donc
 //     la même procédure d'élagage que précédemment qu'on pourrait
-//     capturer par une fonction freeNode(node p).
-
+//     capturer par une fonction freeNode(node p)
 
 int main(int argc, char *argv[]){
 
@@ -336,8 +520,8 @@ int main(int argc, char *argv[]){
   //grid G = initGridPoints(80,60,TX_FREE,1); // petite grille vide, sans mur
   //grid G = initGridPoints(width,height,TX_FREE,1); // grande grille vide, sans mur
   //grid G = initGridPoints(32,24,TX_WALL,0.2); // petite grille avec quelques murs
-  grid G = initGridLaby(12,9,8); // petit labyrinthe aléatoire
-  //grid G = initGridLaby(width/8,height/8,3); // grand labyrinthe aléatoire
+  //grid G = initGridLaby(12,9,8); // petit labyrinthe aléatoire
+  grid G = initGridLaby(width/8,height/8,3); // grand labyrinthe aléatoire
   //grid G = initGridFile("mygrid.txt"); // grille à partir d'un fichier modifiable
 
   // ajoutez à G une (ou plus) "région" de texture donnée ...
@@ -364,7 +548,7 @@ int main(int argc, char *argv[]){
   drawGrid(G); // dessin de la grille avant l'algo
   update = false; // accélère les dessins répétitifs
 
-  double d = A_star(G,halpha); // heuristique: h0, hvo, alpha×hvo
+  double d = A_star2(G,halpha); // heuristique: h0, hvo, alpha×hvo
 
   // chemin trouvé ou pas ?
   if (d < 0){
